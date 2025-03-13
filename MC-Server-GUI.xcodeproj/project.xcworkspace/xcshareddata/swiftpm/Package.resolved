@@ -1,0 +1,15 @@
+{
+  "originHash" : "5c78239bb33c1a93dd55431ca4cd25edc50ccd944bcd9e97475ce5407eae8d0d",
+  "pins" : [
+    {
+      "identity" : "fulldiskaccess",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/inket/FullDiskAccess.git",
+      "state" : {
+        "revision" : "846e04ea2b84fce843f47d7e7f3421189221829c",
+        "version" : "1.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}
