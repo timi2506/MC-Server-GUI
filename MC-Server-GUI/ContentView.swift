@@ -16,6 +16,9 @@ struct ContentView: View {
     @State var newMotd = "A Minecraft Sercer"
     @State var importInstance = false
     @State var dropIsTargeted = false
+    @State var addPropertyFile = false
+    @State var selectedPropertyFile: PropertyFile?
+    @State var propertyFileContent = ""
     
     var body: some View {
         NavigationView {
@@ -196,6 +199,13 @@ struct ContentView: View {
                                                         instances[index].properties["motd"] = newMotd
                                                         saveServerProperties(instances[index].properties, to: instances[index].folder.appendingPathComponent("server.properties"))
                                                     })
+                                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                                    Button("Default") {
+                                                        instances[index].properties["motd"] = "A Minecraft Server"
+                                                        port = "A Minecraft Server"
+                                                        saveServerProperties(instances[index].properties, to: instances[index].folder.appendingPathComponent("server.properties"))
+                                                        
+                                                    }
                                                 }
                                                 .onChange(of: instances[index].properties["motd"]) { newValue in
                                                     newMotd = newValue ?? "A Minecraft Server"
@@ -234,6 +244,98 @@ struct ContentView: View {
                                                 
                                             }
                                             .disabled(instances[index].process.isRunning)
+                                            DisclosureGroup(content: {
+                                                VStack {
+                                                    ForEach(instances[index].propertyFiles, id: \.self) { propertyFile in
+                                                        HStack {
+                                                            Text(propertyFile.name)
+                                                            Spacer()
+                                                            Button("Remove from List") {
+                                                                if let propertyIndex = instances[index].propertyFiles.firstIndex(of: propertyFile) {
+                                                                    instances[index].propertyFiles.remove(at: propertyIndex)
+                                                                }
+                                                            }
+                                                            Button("Show in Finder") {
+                                                                NSWorkspace.shared.activateFileViewerSelecting([propertyFile.fileURL])
+                                                            }
+                                                            Button("Edit") {
+                                                                selectedPropertyFile = propertyFile
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                .padding(15)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 15)
+                                                        .foregroundStyle(.gray.opacity(0.10))
+                                                )
+                                                .padding(5)
+                                            }) {
+                                                HStack {
+                                                    Text("Property Files")
+                                                    Spacer()
+                                                    Button("Add") {
+                                                        addPropertyFile = true
+                                                    }
+                                                }
+                                                .fileImporter(isPresented: $addPropertyFile, allowedContentTypes: [.data], onCompletion: { result in
+                                                    showAlertWithTextField("Enter a name for the Property File to be able to identify it easier", completion: { name in
+                                                        if let name {
+                                                            do {
+                                                                try instances[index].propertyFiles.append(PropertyFile(name: name, fileURL: result.get()))
+                                                            } catch {
+                                                                showError(error.localizedDescription)
+                                                            }
+                                                        } else {
+                                                            do {
+                                                                try instances[index].propertyFiles.append(PropertyFile(name: "Unknown Filename", fileURL: result.get()))
+                                                            } catch {
+                                                                showError(error.localizedDescription)
+                                                            }
+                                                        }
+                                                    })
+                                                })
+                                            }
+                                            
+                                            .sheet(item: $selectedPropertyFile,
+                                                   onDismiss: {
+                                                selectedPropertyFile = nil
+                                            }) { propertyFile in
+                                                VStack {
+                                                    HStack {
+                                                        Text(propertyFile.name).bold()
+                                                        Text(propertyFile.fileURL.lastPathComponent).foregroundStyle(.gray)
+                                                        Spacer()
+                                                        Button("Cancel") {
+                                                            selectedPropertyFile = nil
+                                                        }
+                                                        Button("Save") {
+                                                            do {
+                                                                try FileManager.default.removeItem(at: selectedPropertyFile!.fileURL)
+                                                                try propertyFileContent.write(to: selectedPropertyFile!.fileURL, atomically: true, encoding: .utf8)
+                                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                                                    selectedPropertyFile = nil
+                                                                }
+                                                            } catch {
+                                                                selectedPropertyFile = nil
+                                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                                                    showError(error.localizedDescription)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    TextEditor(text: $propertyFileContent)
+                                                        .onAppear {
+                                                            do {
+                                                                try propertyFileContent = String(contentsOf: selectedPropertyFile!.fileURL)
+                                                            } catch {
+                                                                showError(error.localizedDescription)
+                                                            }
+                                                        }
+                                                }
+                                                .padding()
+                                                .interactiveDismissDisabled(true)
+                                            }
                                             VStack {
                                                 HStack {
                                                     Text("Plugins")
@@ -244,7 +346,7 @@ struct ContentView: View {
                                                 }
                                                 HStack {
                                                     Image(systemName: "arrow.down.app.dashed")
-                                                    Text("Drop plugin .jar here")
+                                                    Text(dropIsTargeted ? "Let go to install" : "Drop Plugin .jar here")
                                                 }
                                                 .foregroundStyle(dropIsTargeted ? .green : .gray)
                                                     
@@ -252,10 +354,10 @@ struct ContentView: View {
                                             .padding()
                                             .background {
                                                 RoundedRectangle(cornerRadius: 15)
-                                                    .foregroundStyle(.gray.opacity(dropIsTargeted ? 0.25 : 0.10))
+                                                    .foregroundStyle(dropIsTargeted ? .blue.opacity(0.10) : .gray.opacity(0.10))
                                                     .overlay(
                                                         RoundedRectangle(cornerRadius: 15)
-                                                            .stroke(.gray.opacity(0.5), lineWidth: 0.25)
+                                                            .strokeBorder(dropIsTargeted ? .blue.opacity(0.5) : .gray.opacity(0.5), lineWidth: 0.5)
                                                     )
                                             }
                                             .onDrop(of: [UTType.fileURL], isTargeted: $dropIsTargeted) { providers in
@@ -263,7 +365,6 @@ struct ContentView: View {
                                             }
                                             .popover(isPresented: $showModsView) {
                                                 PaperMC(presented: $showModsView, folder: instances[index].folder)
-                                                
                                             }
                                             
                                         }
@@ -296,6 +397,7 @@ struct ContentView: View {
                                                 stopJavaProcess(jarProcess: $instances[index].process, log: $instances[index].log, index: index)
                                             }
                                             .disabled(!instances[index].process.isRunning)
+                                            .keyboardShortcut("S", modifiers: [.command, .option])
                                         }
                                         ToolbarItem(placement: .primaryAction) {
                                             Button("Run", systemImage: "play.fill") {
@@ -303,6 +405,7 @@ struct ContentView: View {
                                                 runJavaProcess(jar: instances[index].jar, folder: instances[index].folder, log: $instances[index].log, jarProcess: $instances[index].process, pipeVar: $instances[index].pipe, inputPipeVar: $instances[index].inputPipe, minRAM: instances[index].minRAM, maxRAM: instances[index].maxRAM, GUI: instances[index].GUI ?? false)
                                             }
                                             .disabled(instances[index].process.isRunning)
+                                            .keyboardShortcut("R", modifiers: .command)
                                         }
                                         ToolbarItem(placement: .status) {
                                             HStack {
@@ -331,15 +434,16 @@ struct ContentView: View {
                                             Section("Process Info") {
                                                 Group {
                                                     Text("Process Identifier: \(instances[index].process.processIdentifier.description)")
-                                                        .monospaced()
-                                                        .onChange(of: instances[index].process.isRunning) { newValue in
-                                                            if !newValue {
-                                                                showProcessInfo = false
-                                                            }
-                                                        }
+                                                    Text("Arguments: \(instances[index].process.arguments!.joined(separator: ", "))")
                                                 }
+                                                .monospaced()
+
                                             }
-                                            
+                                        }
+                                        .onChange(of: instances[index].process.isRunning) { newValue in
+                                            if !newValue {
+                                                showProcessInfo = false
+                                            }
                                         }
                                     }
                                 }
@@ -349,12 +453,23 @@ struct ContentView: View {
                 }
             }
             .toolbar {
-                Button("Add Server", systemImage: "plus") {
-                    addInstance = true
+                HStack {
+                    Button("Add Server", systemImage: "plus") {
+                        addInstance = true
+                    }
+                    .keyboardShortcut("N", modifiers: .command)
+                    .popover(isPresented: $addInstance) {
+                        popover
+                    }
+                    Button("Import Server", systemImage: "square.and.arrow.down") {
+                        importInstance = true
+                    }
+                    .keyboardShortcut("I", modifiers: .command)
+                    .popover(isPresented: $importInstance) {
+                        importPopover
+                    }
                 }
-                Button("Import Server", systemImage: "square.and.arrow.down") {
-                    importInstance = true
-                }
+
             }
             .onChange(of: instances) { _ in
                 saveTheInstances()
@@ -372,12 +487,8 @@ struct ContentView: View {
             }
             
         }
-        .popover(isPresented: $addInstance) {
-            popover
-        }
-        .popover(isPresented: $importInstance) {
-            importPopover
-        }
+        
+        
         
     }
     func handleDrop(_ providers: [NSItemProvider], folder: URL) -> Bool {
@@ -604,14 +715,14 @@ struct ContentView: View {
         instances = []
         
         for instance in saveInstances {
-            instances.append(ServerInstance(name: instance.name, folder: instance.folder, jar: instance.jar, minRAM: instance.minRAM, maxRAM: instance.maxRAM, GUI: instance.GUI ?? false))
+            instances.append(ServerInstance(name: instance.name, folder: instance.folder, jar: instance.jar, minRAM: instance.minRAM, maxRAM: instance.maxRAM, GUI: instance.GUI ?? false, propertyFiles: instance.propertyFiles))
         }
     }
     func saveTheInstances() {
         saveInstances = []
         for instance in instances {
             saveInstances.append(
-                SaveableServerInstance(name: instance.name, folder: instance.folder, jar: instance.jar, log: instance.log, minRAM: instance.minRAM, maxRAM: instance.maxRAM, GUI: instance.GUI ?? false)
+                SaveableServerInstance(name: instance.name, folder: instance.folder, jar: instance.jar, log: instance.log, minRAM: instance.minRAM, maxRAM: instance.maxRAM, GUI: instance.GUI ?? false, propertyFiles: instance.propertyFiles)
             )
         }
         let encoder = JSONEncoder()
@@ -706,40 +817,7 @@ struct ContentView: View {
     }
 }
 
-struct ServerInstance: Hashable {
-    var name: String
-    var folder: URL
-    var jar: URL
-    var log: String = ""
-    var process: Process = Process()
-    var pipe: Pipe = Pipe()
-    var inputPipe: Pipe = Pipe()
-    var minRAM: CGFloat
-    var maxRAM: CGFloat
-    var GUI: Bool?
-    var properties: [String: String] = [
-        "server-port" : "",
-        "online-mode" : "true",
-        "motd" : "A Minecraft Server"
-    ]
-    
-    mutating func sendCommand(_ command: String) {
-        if process.isRunning {
-            let data = (command + "\n").data(using: .utf8)
-            inputPipe.fileHandleForWriting.write(data!)
-        }
-    }
-}
 
-struct SaveableServerInstance: Hashable, Codable {
-    var name: String
-    var folder: URL
-    var jar: URL
-    var log: String = ""
-    var minRAM: CGFloat
-    var maxRAM: CGFloat
-    var GUI: Bool?
-}
 
 import AppKit
 
